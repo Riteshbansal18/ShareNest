@@ -1,199 +1,263 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import Navbar from '../components/Navbar';
-
-const mockChats = [
-    {
-        id: 1,
-        name: 'Elena Vance',
-        avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDBIIn1KwVwpULUJNeR1I0MdqXhILZ7L_r5Fk3CiXVHYV4D4aW5J63ygbmVv_M88PW3nnklqtdmSt8dtEerQvvKaAxbZYya2Cb3Rqq1sWsdahUPgBJoPoPLwXEbxwnUF57rmuEJdM89QYem0JCGnu9JdVxeTfll4NgxFs2aDr8NHeMMKE98gocTgZwRjL0gk2o9Wt49g6lYI62Qo8y3zjcRzzwC628J5eWNIGfpHk3T477De7DhXRYPYweaEQBKsIZKcKW8u2UGUKoy',
-        lastMessage: "That sounds perfect! What time works for you?",
-        timestamp: '10:42 AM',
-        unread: 2,
-        active: true
-    },
-    {
-        id: 2,
-        name: 'James T.',
-        avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDLwg7ylVcRMaQHT_aBDoC-tBzuzRkOqwoFxg4Yz49yeTKYyPeCQ_ciOgsPoVMioxWGzHkvh7klv_FBG2JuyFnsVCByhJm_vou1b2V0LgahvAd7QPZ_PO1M-xmkO5QYMWcOuvFOv5QSDq5qFJQ0FqLslMHz9Dbz20BHwnt7YTBVn8fNR-XLjzjqw2DykcomKfD0hiYMqCpIUn_aKIi66rXo5ZXPzODFzBctecs-SUKsllXbRmk5KGcsvS4sCHBYcb6eJQwk_rJqMK4S',
-        lastMessage: "I just uploaded some new photos of the studio space.",
-        timestamp: 'Yesterday',
-        unread: 0,
-        active: false
-    },
-    {
-        id: 3,
-        name: 'Sarah Jenkins',
-        avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAtV2hc5Sc91mQ8-G4YccJ7_X01HMClsj3z4ammHjQjxBUeZTr24Di5wr_naNJXZgcnUGzCt6ZjJz4BA8DQbtgap0Zm9DNui81lqph6B7DtIND-QQo-92pYZzu4gL5Z4uW173WA9CHWl2juM5E4KR3wATcQ5n4gGW1SFUs4aMwk_9kFPuJsiZS2L1Kko7AgF4bULuoxpzp1-9jb-Ml6EDRsztBkCTBSfILdHn4EPvigO3NYrxJCB-nDATZEjpa8fHAF60JBLC8xMswo',
-        lastMessage: "No worries, let me know if you change your mind.",
-        timestamp: 'Mon',
-        unread: 0,
-        active: false
-    }
-];
-
-const mockMessages = [
-    { id: 1, sender: 'them', text: "Hi! I saw your profile and I think we'd be great roommates.", time: '10:30 AM' },
-    { id: 2, sender: 'me', text: "Hey Elena! Thanks for reaching out. I liked your profile too, especially the part about being pet friendly 🐶", time: '10:35 AM' },
-    { id: 3, sender: 'them', text: "Yes! I have a golden retriever mix. Are you free to grab coffee this weekend to chat and see if we vibe?", time: '10:38 AM' },
-    { id: 4, sender: 'me', text: "I'd love that. Saturday morning maybe?", time: '10:40 AM' },
-    { id: 5, sender: 'them', text: "That sounds perfect! What time works for you?", time: '10:42 AM' }
-];
+import { GlobalContext } from '../context/GlobalContext';
+import { messagesAPI } from '../api/services';
+import { getSocket } from '../api/socket';
+import { Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 export default function Messages() {
-    const [activeChat, setActiveChat] = useState(mockChats[0]);
-    const [messages, setMessages] = useState(mockMessages);
-    const [newMessage, setNewMessage] = useState("");
+  const { isAuthenticated, user, onlineUsers } = useContext(GlobalContext);
+  const navigate = useNavigate();
+  const [conversations, setConversations] = useState([]);
+  const [activeConv, setActiveConv] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [typingUsers, setTypingUsers] = useState({});
+  const [showSidebar, setShowSidebar] = useState(true); // mobile: toggle between list & chat
+  const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const activeConvRef = useRef(null);
 
-    const handleSendMessage = (e) => {
-        e.preventDefault();
-        if (!newMessage.trim()) return;
+  useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
 
-        const newMsg = {
-            id: messages.length + 1,
-            sender: 'me',
-            text: newMessage,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
+  useEffect(() => {
+    if (!isAuthenticated) { navigate('/login'); return; }
+    loadConversations();
+    const socket = getSocket();
+    socket.on('message:new', (msg) => {
+      const convId = msg.conversation;
+      if (activeConvRef.current?._id === convId) setMessages(prev => [...prev, msg]);
+      setConversations(prev => prev.map(c =>
+        c._id === convId
+          ? { ...c, lastMessage: msg.content, lastMessageAt: msg.createdAt, unread: activeConvRef.current?._id === convId ? 0 : (c.unread || 0) + 1 }
+          : c
+      ));
+    });
+    socket.on('typing:start', ({ userId, userName }) => setTypingUsers(prev => ({ ...prev, [userId]: userName })));
+    socket.on('typing:stop', ({ userId }) => setTypingUsers(prev => { const n = { ...prev }; delete n[userId]; return n; }));
+    return () => { socket.off('message:new'); socket.off('typing:start'); socket.off('typing:stop'); };
+  }, [isAuthenticated]);
 
-        setMessages([...messages, newMsg]);
-        setNewMessage("");
-    };
+  useEffect(() => {
+    if (activeConv) {
+      loadMessages(activeConv._id);
+      getSocket().emit('conversation:join', activeConv._id);
+    }
+  }, [activeConv?._id]);
 
-    return (
-        <div className="h-screen flex flex-col bg-surface-container-low font-inter">
-            <Navbar />
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-            <main className="flex-1 pt-20 px-4 md:px-8 pb-4 flex overflow-hidden">
-                <div className="w-full max-w-7xl mx-auto flex gap-6 mt-4 bg-surface-container-highest/20 rounded-3xl overflow-hidden shadow-sm border border-outline-variant/30">
+  const loadConversations = async () => {
+    try {
+      const res = await messagesAPI.getConversations();
+      setConversations(res.data.conversations);
+      if (res.data.conversations.length > 0) setActiveConv(res.data.conversations[0]);
+    } catch { console.error('Failed to load conversations'); }
+    finally { setLoading(false); }
+  };
 
-                    {/* Sidebar: Chat List */}
-                    <aside className="w-full md:w-96 bg-surface-container-lowest border-r border-outline-variant/50 flex flex-col hidden md:flex shrink-0">
-                        <div className="p-6 border-b border-outline-variant/50 flex justify-between items-center">
-                            <h2 className="text-2xl font-extrabold text-on-surface tracking-tight">Messages</h2>
-                            <button className="bg-surface-container-high p-2 rounded-full text-on-surface hover:text-primary transition-colors">
-                                <span className="material-symbols-outlined">edit_square</span>
-                            </button>
-                        </div>
+  const loadMessages = async (convId) => {
+    try {
+      const res = await messagesAPI.getMessages(convId);
+      setMessages(res.data.messages);
+      setConversations(prev => prev.map(c => c._id === convId ? { ...c, unread: 0 } : c));
+    } catch { console.error('Failed to load messages'); }
+  };
 
-                        <div className="p-4 border-b border-outline-variant/50">
-                            <div className="relative">
-                                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">search</span>
-                                <input
-                                    type="text"
-                                    placeholder="Search conversations..."
-                                    className="w-full bg-surface-container pl-12 pr-4 py-3 rounded-full border-transparent focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all"
-                                />
-                            </div>
-                        </div>
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !activeConv || sending) return;
+    setSending(true);
+    const content = newMessage.trim();
+    setNewMessage('');
+    getSocket().emit('typing:stop', { conversationId: activeConv._id, userId: user._id });
+    try { await messagesAPI.sendMessage(activeConv._id, content); }
+    catch { toast.error('Failed to send message'); }
+    finally { setSending(false); }
+  };
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar">
-                            {mockChats.map((chat) => (
-                                <div
-                                    key={chat.id}
-                                    onClick={() => setActiveChat(chat)}
-                                    className={`p-4 mx-2 my-2 rounded-2xl cursor-pointer flex items-center gap-4 transition-all duration-300 ${activeChat.id === chat.id ? 'bg-primary-container/20 border border-primary/20 shadow-sm' : 'hover:bg-surface-container-high border border-transparent'}`}
-                                >
-                                    <div className="relative">
-                                        <img src={chat.avatar} alt={chat.name} className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm" />
-                                        {chat.active && <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>}
-                                    </div>
+  const handleTyping = (e) => {
+    setNewMessage(e.target.value);
+    if (!activeConv) return;
+    getSocket().emit('typing:start', { conversationId: activeConv._id, userId: user._id, userName: user.fullName.split(' ')[0] });
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      getSocket().emit('typing:stop', { conversationId: activeConv._id, userId: user._id });
+    }, 1500);
+  };
 
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-baseline mb-1">
-                                            <h3 className={`truncate font-bold ${activeChat.id === chat.id ? 'text-primary' : 'text-on-surface'}`}>{chat.name}</h3>
-                                            <span className={`text-[10px] whitespace-nowrap ${chat.unread > 0 ? 'text-primary font-bold' : 'text-outline-variant font-medium'}`}>{chat.timestamp}</span>
-                                        </div>
-                                        <p className={`text-xs truncate ${chat.unread > 0 ? 'text-on-surface font-semibold' : 'text-on-surface-variant'}`}>
-                                            {chat.lastMessage}
-                                        </p>
-                                    </div>
+  const handleSelectConv = (conv) => {
+    setActiveConv(conv);
+    setShowSidebar(false); // on mobile, switch to chat view
+  };
 
-                                    {chat.unread > 0 && (
-                                        <div className="w-5 h-5 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center shrink-0 shadow-sm">
-                                            {chat.unread}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </aside>
+  const isOnline = (userId) => onlineUsers?.includes(userId?.toString());
 
-                    {/* Main Chat Area */}
-                    <section className="flex-1 bg-surface-container-lowest flex flex-col min-w-0">
-                        {/* Chat Header */}
-                        <div className="h-20 px-6 border-b border-outline-variant/30 flex items-center justify-between bg-white/50 backdrop-blur-md">
-                            <div className="flex items-center gap-4">
-                                <button className="md:hidden text-outline-variant p-2 -ml-2">
-                                    <span className="material-symbols-outlined">arrow_back</span>
-                                </button>
-                                <div className="relative cursor-pointer group">
-                                    <img src={activeChat.avatar} alt={activeChat.name} className="w-12 h-12 rounded-full object-cover border border-outline-variant/20 group-hover:opacity-80 transition-opacity" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-on-surface text-lg leading-tight">{activeChat.name}</h3>
-                                    <p className="text-xs text-secondary font-medium tracking-wide flex items-center gap-1">
-                                        <div className="w-2 h-2 rounded-full bg-green-500"></div> Online
-                                    </p>
-                                </div>
-                            </div>
+  const getAvatarUrl = (participant) => {
+    if (!participant) return '';
+    const img = participant.profileImage;
+    if (!img) return `https://ui-avatars.com/api/?name=${encodeURIComponent(participant.fullName || 'U')}&background=1e3a5f&color=fff&size=64`;
+    return img.startsWith('http') ? img : `http://localhost:5000${img}`;
+  };
 
-                            <div className="flex items-center gap-2">
-                                <button className="w-10 h-10 rounded-full border border-outline-variant/50 flex items-center justify-center text-outline hover:bg-surface-container hover:text-primary transition-colors">
-                                    <span className="material-symbols-outlined">call</span>
-                                </button>
-                                <button className="w-10 h-10 rounded-full border border-outline-variant/50 flex items-center justify-center text-outline hover:bg-surface-container hover:text-primary transition-colors">
-                                    <span className="material-symbols-outlined">videocam</span>
-                                </button>
-                                <button className="w-10 h-10 rounded-full flex items-center justify-center text-outline hover:bg-surface-container transition-colors">
-                                    <span className="material-symbols-outlined">more_vert</span>
-                                </button>
-                            </div>
-                        </div>
+  const formatTime = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    const diff = Date.now() - d;
+    if (diff < 86400000) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (diff < 604800000) return d.toLocaleDateString([], { weekday: 'short' });
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
 
-                        {/* Message History */}
-                        <div className="flex-1 p-6 overflow-y-auto bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-surface-container-lowest custom-scrollbar space-y-6">
-                            <div className="text-center text-xs font-semibold text-outline-variant my-4 uppercase tracking-widest">Today</div>
+  const typingList = Object.values(typingUsers);
 
-                            {messages.map((msg) => (
-                                <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
-                                    {msg.sender !== 'me' && (
-                                        <img src={activeChat.avatar} className="w-8 h-8 rounded-full object-cover self-end mr-3 mb-1 shadow-sm" alt="Avatar" />
-                                    )}
-                                    <div className={`flex flex-col ${msg.sender === 'me' ? 'items-end' : 'items-start'} max-w-[70%]`}>
-                                        <div className={`px-5 py-3 rounded-2xl shadow-sm leading-relaxed text-sm ${msg.sender === 'me'
-                                                ? 'bg-primary text-white rounded-br-none'
-                                                : 'bg-surface-container text-on-surface rounded-bl-none'
-                                            }`}>
-                                            {msg.text}
-                                        </div>
-                                        <span className="text-[10px] text-outline-variant font-medium mt-1 mx-1">{msg.time}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+  if (loading) return (
+    <>
+      <Navbar />
+      <div className="pt-20 h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+      </div>
+    </>
+  );
 
-                        {/* Input Area */}
-                        <div className="p-4 bg-white border-t border-outline-variant/30">
-                            <form onSubmit={handleSendMessage} className="flex items-end gap-3 bg-surface-container-low p-2 rounded-3xl border border-outline-variant/50 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
-                                <button type="button" className="p-2 text-outline hover:text-primary transition-colors rounded-full shrink-0">
-                                    <span className="material-symbols-outlined">add_circle</span>
-                                </button>
-                                <textarea
-                                    rows="1"
-                                    value={newMessage}
-                                    onChange={(e) => setNewMessage(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
-                                    className="flex-1 bg-transparent border-none resize-none max-h-32 min-h-[44px] py-3 text-sm focus:ring-0 text-on-surface placeholder-outline-variant custom-scrollbar"
-                                    placeholder="Type a message..."
-                                ></textarea>
-                                <button type="submit" disabled={!newMessage.trim()} className={`p-3 rounded-full flex items-center justify-center transition-all shrink-0 ${newMessage.trim() ? 'bg-primary text-white shadow-md hover:scale-105' : 'bg-surface-container-highest text-outline'}`}>
-                                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
-                                </button>
-                            </form>
-                        </div>
-                    </section>
-                </div>
-            </main>
+  return (
+    <>
+      <Navbar />
+      <main className="pt-16 h-screen flex overflow-hidden">
+
+        {/* Conversations List — full screen on mobile when showSidebar, hidden when in chat */}
+        <div className={`
+          flex-shrink-0 border-r border-outline-variant/20 bg-surface-container-lowest flex flex-col
+          w-full md:w-80
+          ${showSidebar ? 'flex' : 'hidden md:flex'}
+        `}>
+          <div className="p-4 border-b border-outline-variant/20">
+            <h2 className="text-xl font-bold text-on-surface">Messages</h2>
+            <p className="text-xs text-on-surface-variant mt-1">{conversations.length} conversations</p>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {conversations.length === 0 ? (
+              <div className="p-8 text-center">
+                <span className="material-symbols-outlined text-4xl text-outline-variant">chat_bubble</span>
+                <p className="text-on-surface-variant text-sm mt-3">No conversations yet</p>
+                <Link to="/roommate-listing" className="text-primary text-sm font-semibold hover:underline mt-2 block">Find roommates to message</Link>
+              </div>
+            ) : (
+              conversations.map(conv => (
+                <button key={conv._id} onClick={() => handleSelectConv(conv)}
+                  className={`w-full flex items-center gap-3 p-4 hover:bg-surface-container transition-colors text-left ${activeConv?._id === conv._id ? 'bg-surface-container border-r-2 border-primary' : ''}`}>
+                  <div className="relative flex-shrink-0">
+                    <img src={getAvatarUrl(conv.participant)} alt="" className="w-12 h-12 rounded-full object-cover" />
+                    {isOnline(conv.participant?._id) && (
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-on-surface text-sm truncate">{conv.participant?.fullName}</span>
+                      <span className="text-xs text-on-surface-variant flex-shrink-0 ml-2">{formatTime(conv.lastMessageAt)}</span>
+                    </div>
+                    <p className="text-xs text-on-surface-variant truncate mt-0.5">{conv.lastMessage || 'Start a conversation'}</p>
+                  </div>
+                  {conv.unread > 0 && (
+                    <span className="bg-primary text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
+                      {conv.unread}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
         </div>
-    );
+
+        {/* Chat Area — full screen on mobile when !showSidebar */}
+        <div className={`
+          flex-1 flex flex-col bg-surface
+          ${!showSidebar ? 'flex' : 'hidden md:flex'}
+        `}>
+          {activeConv ? (
+            <>
+              {/* Chat Header */}
+              <div className="flex items-center gap-3 p-4 border-b border-outline-variant/20 bg-surface-container-lowest">
+                {/* Back button — mobile only */}
+                <button onClick={() => setShowSidebar(true)} className="md:hidden p-1.5 -ml-1 rounded-full hover:bg-surface-container">
+                  <span className="material-symbols-outlined text-on-surface-variant">arrow_back</span>
+                </button>
+                <div className="relative">
+                  <img src={getAvatarUrl(activeConv.participant)} alt="" className="w-10 h-10 rounded-full object-cover" />
+                  {isOnline(activeConv.participant?._id) && (
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-white"></span>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-bold text-on-surface">{activeConv.participant?.fullName}</h3>
+                  <p className={`text-xs font-medium ${isOnline(activeConv.participant?._id) ? 'text-green-500' : 'text-on-surface-variant'}`}>
+                    {isOnline(activeConv.participant?._id) ? 'Online' : 'Offline'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 ? (
+                  <div className="text-center py-10">
+                    <p className="text-on-surface-variant text-sm">No messages yet. Say hello! 👋</p>
+                  </div>
+                ) : (
+                  messages.map(msg => {
+                    const isMe = msg.sender?._id === user?._id || msg.sender === user?._id;
+                    return (
+                      <div key={msg._id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
+                        {!isMe && <img src={getAvatarUrl(activeConv.participant)} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-1" />}
+                        <div className={`max-w-[75%] flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
+                          <div className={`px-4 py-2.5 rounded-2xl text-sm break-words ${isMe ? 'bg-primary text-white rounded-tr-sm' : 'bg-surface-container-low text-on-surface rounded-tl-sm'}`}>
+                            {msg.content}
+                          </div>
+                          <span className="text-xs text-on-surface-variant">{formatTime(msg.createdAt)}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {typingList.length > 0 && (
+                  <div className="flex gap-2 items-center">
+                    <img src={getAvatarUrl(activeConv.participant)} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                    <div className="bg-surface-container-low px-4 py-3 rounded-2xl rounded-tl-sm flex gap-1 items-center">
+                      <span className="w-2 h-2 bg-on-surface-variant rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-2 h-2 bg-on-surface-variant rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-2 h-2 bg-on-surface-variant rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Message Input */}
+              <form onSubmit={handleSend} className="p-3 border-t border-outline-variant/20 bg-surface-container-lowest">
+                <div className="flex items-center gap-2">
+                  <input value={newMessage} onChange={handleTyping}
+                    placeholder="Type a message..."
+                    className="flex-1 px-4 py-3 bg-surface-container-highest rounded-full border-none focus:ring-2 focus:ring-primary/20 text-on-surface text-sm" />
+                  <button type="submit" disabled={!newMessage.trim() || sending}
+                    className="bg-primary text-white p-3 rounded-full hover:bg-primary/90 transition-colors disabled:opacity-50 flex-shrink-0">
+                    <span className="material-symbols-outlined text-sm">{sending ? 'hourglass_empty' : 'send'}</span>
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <span className="material-symbols-outlined text-6xl text-outline-variant">forum</span>
+                <p className="text-on-surface-variant mt-4 text-lg font-medium">Select a conversation</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+    </>
+  );
 }

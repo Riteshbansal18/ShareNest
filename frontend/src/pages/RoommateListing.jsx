@@ -1,167 +1,181 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import Footer from '../components/Footer';
 import Navbar from '../components/Navbar';
 import { Link } from 'react-router-dom';
 import { GlobalContext } from '../context/GlobalContext';
 
 export default function RoommateListing() {
-    const { roommates } = useContext(GlobalContext);
-    const [filters, setFilters] = useState({
-        city: 'All Cities',
-        budgetStr: 'Any Budget',
-        gender: 'Any Gender'
-    });
+  const { roommates, roommatesLoading, toggleFavoriteRoommate, favoriteRoommates } = useContext(GlobalContext);
+  const [filters, setFilters] = useState({ city: 'All Cities', budgetStr: 'Any Budget', gender: 'Any Gender' });
+  const [filteredData, setFilteredData] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
-    const [filteredData, setFilteredData] = useState(roommates);
+  const handleFilterChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-    const handleFilterChange = (e) => {
-        setFilters({
-            ...filters,
-            [e.target.name]: e.target.value
-        });
-    };
+  useEffect(() => {
+    let result = [...roommates];
+    if (filters.city !== 'All Cities') {
+      result = result.filter(r => {
+        const cities = r.preferredCities || (r.city ? [r.city] : []);
+        return cities.some(c => c.toLowerCase().includes(filters.city.toLowerCase()));
+      });
+    }
+    if (filters.gender !== 'Any Gender') result = result.filter(r => r.gender === filters.gender || r.user?.gender === filters.gender);
+    if (filters.budgetStr !== 'Any Budget') {
+      result = result.filter(r => {
+        const b = r.budget;
+        if (filters.budgetStr === 'Under ₹8,000') return b < 8000;
+        if (filters.budgetStr === '₹8,000 - ₹15,000') return b >= 8000 && b <= 15000;
+        if (filters.budgetStr === '₹15,000+') return b > 15000;
+        return true;
+      });
+    }
+    if (searchQuery) {
+      result = result.filter(r => {
+        const name = r.user?.fullName || r.name || '';
+        const loc = r.user?.location || r.location || '';
+        return name.toLowerCase().includes(searchQuery.toLowerCase()) || loc.toLowerCase().includes(searchQuery.toLowerCase());
+      });
+    }
+    setFilteredData(result);
+  }, [roommates, filters, searchQuery]);
 
-    const applyFilters = () => {
-        let result = roommates;
+  const getAvatarUrl = (r) => {
+    const img = r.user?.profileImage || r.image;
+    if (!img) return `https://ui-avatars.com/api/?name=${encodeURIComponent(r.user?.fullName || r.name || 'U')}&background=1e3a5f&color=fff&size=200`;
+    return img.startsWith('http') ? img : `http://localhost:5000${img}`;
+  };
 
-        if (filters.city !== 'All Cities') {
-            result = result.filter(r => r.city === filters.city);
-        }
+  const getName = (r) => r.user?.fullName || r.name || 'Unknown';
+  const getLocation = (r) => r.user?.location || r.location || (r.preferredCities?.[0]) || 'Location not set';
+  const getTags = (r) => r.tags || r.user?.interests || [];
+  const getId = (r) => r._id || r.id;
+  const isVerified = (r) => r.verified || r.user?.verificationLevel > 0;
 
-        if (filters.gender !== 'Any Gender') {
-            result = result.filter(r => r.gender === filters.gender);
-        }
+  return (
+    <>
+      <Navbar />
+      <main className="pt-32 pb-20 px-4 md:px-8 max-w-screen-2xl mx-auto">
+        <div className="mb-10">
+          <h1 className="text-4xl font-extrabold text-on-surface tracking-tight">Find Roommates</h1>
+          <p className="text-on-surface-variant mt-2">Connect with compatible people looking for a place to share.</p>
+        </div>
 
-        if (filters.budgetStr !== 'Any Budget') {
-            result = result.filter(r => {
-                if (filters.budgetStr === '$500 - $1,000') return r.budget >= 500 && r.budget <= 1000;
-                if (filters.budgetStr === '$1,000 - $2,000') return r.budget > 1000 && r.budget <= 2000;
-                if (filters.budgetStr === '$2,000+') return r.budget > 2000;
-                return true;
-            });
-        }
+        {/* Filters */}
+        <div className="bg-surface-container-lowest rounded-xl p-4 md:p-6 mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex-1 min-w-48">
+            <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">Search</label>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-sm">search</span>
+              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-surface-container-highest rounded-lg border-none focus:ring-2 focus:ring-primary/20 text-sm text-on-surface"
+                placeholder="Search by name or location..." />
+            </div>
+          </div>
+          <div className="flex-1 min-w-36">
+            <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">City</label>
+            <select name="city" value={filters.city} onChange={handleFilterChange}
+              className="w-full px-3 py-2.5 bg-surface-container-highest rounded-lg border-none focus:ring-2 focus:ring-primary/20 text-sm text-on-surface">
+              <option>All Cities</option>
+              <option>Mumbai</option>
+              <option>Delhi</option>
+              <option>Bangalore</option>
+              <option>Hyderabad</option>
+              <option>Pune</option>
+              <option>Chennai</option>
+            </select>
+          </div>
+          <div className="flex-1 min-w-36">
+            <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">Budget</label>
+            <select name="budgetStr" value={filters.budgetStr} onChange={handleFilterChange}
+              className="w-full px-3 py-2.5 bg-surface-container-highest rounded-lg border-none focus:ring-2 focus:ring-primary/20 text-sm text-on-surface">
+              <option>Any Budget</option>
+              <option>Under ₹8,000</option>
+              <option>₹8,000 - ₹15,000</option>
+              <option>₹15,000+</option>
+            </select>
+          </div>
+          <div className="flex-1 min-w-36">
+            <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">Gender</label>
+            <select name="gender" value={filters.gender} onChange={handleFilterChange}
+              className="w-full px-3 py-2.5 bg-surface-container-highest rounded-lg border-none focus:ring-2 focus:ring-primary/20 text-sm text-on-surface">
+              <option>Any Gender</option>
+              <option>Male</option>
+              <option>Female</option>
+              <option>Non-binary</option>
+            </select>
+          </div>
+        </div>
 
-        setFilteredData(result);
-    };
+        <p className="text-on-surface-variant text-sm mb-6">
+          {roommatesLoading ? 'Loading...' : <><span className="font-bold text-on-surface">{filteredData.length}</span> roommates found</>}
+        </p>
 
-    return (
-        <>
-            <Navbar />
-            <main className="pt-32 pb-20 px-8 max-w-screen-2xl mx-auto">
-                {/*  Editorial Header Section  */}
-                <header className="mb-16">
-                    <h1 className="text-5xl md:text-7xl font-extrabold text-on-surface tracking-tighter mb-4 max-w-3xl leading-none">
-                        Find your partner in <span className="text-primary italic">modern living</span>.
-                    </h1>
-                    <p className="text-on-surface-variant text-lg max-w-xl font-body leading-relaxed">
-                        Connect with curated individuals who share your lifestyle, values, and vision for a sanctuary home.
-                    </p>
-                </header>
-
-                {/*  Filters Section  */}
-                <section className="mb-12 flex flex-col md:flex-row items-end gap-6 p-8 bg-surface-container-low rounded-xl">
-                    <div className="w-full md:w-auto flex-1 grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/*  City Filter  */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant opacity-70">Preferred City</label>
-                            <div className="relative">
-                                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">location_on</span>
-                                <select name="city" value={filters.city} onChange={handleFilterChange} className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border-none rounded-xl text-on-surface focus:ring-2 focus:ring-primary appearance-none">
-                                    <option>All Cities</option>
-                                    <option>New York</option>
-                                    <option>San Francisco</option>
-                                    <option>Austin</option>
-                                </select>
-                            </div>
-                        </div>
-                        {/*  Budget Filter  */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant opacity-70">Monthly Budget</label>
-                            <div className="relative">
-                                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">payments</span>
-                                <select name="budgetStr" value={filters.budgetStr} onChange={handleFilterChange} className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border-none rounded-xl text-on-surface focus:ring-2 focus:ring-primary appearance-none">
-                                    <option>Any Budget</option>
-                                    <option>$500 - $1,000</option>
-                                    <option>$1,000 - $2,000</option>
-                                    <option>$2,000+</option>
-                                </select>
-                            </div>
-                        </div>
-                        {/*  Gender Filter  */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant opacity-70">Gender Identity</label>
-                            <div className="relative">
-                                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">group</span>
-                                <select name="gender" value={filters.gender} onChange={handleFilterChange} className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border-none rounded-xl text-on-surface focus:ring-2 focus:ring-primary appearance-none">
-                                    <option>Any Gender</option>
-                                    <option>Female</option>
-                                    <option>Male</option>
-                                    <option>Non-binary</option>
-                                </select>
-                            </div>
-                        </div>
+        {roommatesLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="bg-surface-container-lowest rounded-xl overflow-hidden animate-pulse">
+                <div className="h-56 bg-surface-container-high"></div>
+                <div className="p-5 space-y-3">
+                  <div className="h-4 bg-surface-container-high rounded w-3/4"></div>
+                  <div className="h-3 bg-surface-container-high rounded w-1/2"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredData.length === 0 ? (
+          <div className="text-center py-20">
+            <span className="material-symbols-outlined text-6xl text-outline-variant">person_search</span>
+            <p className="text-on-surface-variant mt-4 text-lg font-medium">No roommates match your filters</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredData.map(roommate => (
+              <div key={getId(roommate)} className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm group hover:shadow-md transition-shadow">
+                <div className="relative h-56 overflow-hidden">
+                  <img src={getAvatarUrl(roommate)} alt={getName(roommate)}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <button onClick={() => toggleFavoriteRoommate(getId(roommate))}
+                    className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm p-2 rounded-full shadow-md hover:scale-110 transition-transform">
+                    <span className="material-symbols-outlined text-sm"
+                      style={{ fontVariationSettings: favoriteRoommates.includes(getId(roommate)) ? "'FILL' 1" : "'FILL' 0", color: favoriteRoommates.includes(getId(roommate)) ? '#ef4444' : '#64748b' }}>
+                      favorite
+                    </span>
+                  </button>
+                  {isVerified(roommate) && (
+                    <span className="absolute top-3 left-3 bg-on-tertiary-container text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span> Verified
+                    </span>
+                  )}
+                </div>
+                <div className="p-5">
+                  <h3 className="font-bold text-on-surface text-base">{getName(roommate)}</h3>
+                  <p className="text-on-surface-variant text-xs mt-1 flex items-center gap-1 mb-3">
+                    <span className="material-symbols-outlined text-xs">location_on</span>{getLocation(roommate)}
+                  </p>
+                  <p className="text-primary font-bold text-sm mb-3">Budget: ₹{roommate.budget?.toLocaleString('en-IN')}/mo</p>
+                  {roommate.compatibilityScore !== null && roommate.compatibilityScore !== undefined && (
+                    <div className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full mb-3 ${roommate.compatibilityScore >= 70 ? 'bg-green-50 text-green-600' : roommate.compatibilityScore >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                      {roommate.compatibilityScore}% match
                     </div>
-                    <button onClick={applyFilters} className="bg-secondary text-white px-10 py-3 rounded-full font-bold hover:brightness-110 transition-all flex items-center gap-2">
-                        <span className="material-symbols-outlined">tune</span>
-                        Apply Filters
-                    </button>
-                </section>
-
-                {/*  Roommate Grid  */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                    {filteredData.length === 0 ? (
-                        <div className="col-span-1 md:col-span-2 lg:col-span-3 text-center py-12 text-on-surface-variant font-bold">No roommates found based on your filters.</div>
-                    ) : (
-                        filteredData.map((roommate) => (
-                            <div key={roommate.id} className="group bg-surface-container-lowest rounded-xl overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col">
-                                <div className="relative h-72 overflow-hidden">
-                                    <img className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" src={roommate.image} alt={roommate.name} />
-                                    {roommate.verified && (
-                                        <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 text-primary">
-                                            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
-                                            Verified Profile
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="p-8 flex-1 flex flex-col">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="text-2xl font-bold text-on-surface">{roommate.name}</h3>
-                                            <p className="text-on-surface-variant flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-sm">location_on</span>
-                                                {roommate.location}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="block text-primary font-black text-xl leading-none">${roommate.budget.toLocaleString()}</span>
-                                            <span className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">Max Budget</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 mb-8">
-                                        {roommate.tags.map((tag, idx) => (
-                                            <span key={idx} className="bg-secondary-container text-on-secondary-container text-xs font-semibold px-3 py-1 rounded-full">{tag}</span>
-                                        ))}
-                                    </div>
-                                    <Link to={`/view-roommate/${roommate.id}`} className="mt-auto">
-                                        <button className="w-full py-3 bg-surface-container-high text-primary font-bold rounded-full hover:bg-primary hover:text-white transition-all duration-300">
-                                            View Profile
-                                        </button>
-                                    </Link>
-                                </div>
-                            </div>
-                        ))
-                    )}
+                  )}
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {getTags(roommate).slice(0, 3).map((tag, i) => (
+                      <span key={i} className="bg-surface-container text-on-surface-variant text-xs px-2 py-1 rounded-full">{tag}</span>
+                    ))}
+                  </div>
+                  <Link to={`/view-roommate/${getId(roommate)}`}
+                    className="block w-full text-center py-2.5 bg-primary/10 text-primary font-bold rounded-full text-sm hover:bg-primary hover:text-white transition-all">
+                    View Profile
+                  </Link>
                 </div>
-
-                {/*  Load More Section  */}
-                <div className="mt-20 flex justify-center">
-                    <button className="group flex items-center gap-3 text-lg font-bold text-on-surface-variant hover:text-primary transition-colors">
-                        Discover More Potential Roommates
-                        <span className="material-symbols-outlined group-hover:translate-y-1 transition-transform">keyboard_double_arrow_down</span>
-                    </button>
-                </div>
-            </main>
-            <Footer />
-        </>
-    );
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+      <Footer />
+    </>
+  );
 }
