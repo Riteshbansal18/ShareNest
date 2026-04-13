@@ -24,6 +24,8 @@ export default function FindHomes() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
 
   // Read URL params from Home search on first load
   useEffect(() => {
@@ -39,6 +41,7 @@ export default function FindHomes() {
   const clearAll = () => {
     setBudget(50000); setSelectedCities([]); setGender('Any');
     setRoomType(''); setAmenities([]); setSortOption('newest'); setSearchQuery('');
+    setCurrentPage(1);
   };
 
   useEffect(() => {
@@ -56,6 +59,7 @@ export default function FindHomes() {
     else if (sortOption === 'price-desc') result.sort((a, b) => b.price - a.price);
     else result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     setFilteredData(result);
+    setCurrentPage(1);
   }, [properties, budget, selectedCities, gender, roomType, amenities, sortOption, searchQuery]);
 
   const getImageUrl = (img) => {
@@ -333,8 +337,9 @@ export default function FindHomes() {
                 </button>
               </div>
             ) : (
+              <>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                {filteredData.map(property => {
+                {filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map(property => {
                   const isFav = favoriteProperties.includes(property._id);
                   return (
                     <div key={property._id} className="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm group hover:shadow-lg transition-all hover:-translate-y-1 duration-200">
@@ -402,6 +407,40 @@ export default function FindHomes() {
                   );
                 })}
               </div>
+
+              {/* Pagination */}
+              {filteredData.length > ITEMS_PER_PAGE && (
+                <div className="flex items-center justify-between mt-8">
+                  <p className="text-on-surface-variant text-sm">
+                    Showing <span className="font-bold text-on-surface">{(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)}</span> of <span className="font-bold text-on-surface">{filteredData.length}</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setCurrentPage(p => p - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      disabled={currentPage === 1}
+                      className="px-4 py-2 bg-surface-container-lowest border border-outline-variant/20 rounded-xl text-sm font-semibold text-on-surface disabled:opacity-40 hover:bg-surface-container transition-colors">
+                      ← Prev
+                    </button>
+                    {/* Page numbers */}
+                    {Array.from({ length: Math.ceil(filteredData.length / ITEMS_PER_PAGE) }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === Math.ceil(filteredData.length / ITEMS_PER_PAGE) || Math.abs(p - currentPage) <= 1)
+                      .map((p, i, arr) => (
+                        <React.Fragment key={p}>
+                          {i > 0 && arr[i - 1] !== p - 1 && <span className="text-on-surface-variant">...</span>}
+                          <button onClick={() => { setCurrentPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                            className={`w-9 h-9 rounded-xl text-sm font-bold transition-colors ${currentPage === p ? 'bg-primary text-white' : 'bg-surface-container-lowest border border-outline-variant/20 text-on-surface hover:bg-surface-container'}`}>
+                            {p}
+                          </button>
+                        </React.Fragment>
+                      ))}
+                    <button onClick={() => { setCurrentPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      disabled={currentPage === Math.ceil(filteredData.length / ITEMS_PER_PAGE)}
+                      className="px-4 py-2 bg-surface-container-lowest border border-outline-variant/20 rounded-xl text-sm font-semibold text-on-surface disabled:opacity-40 hover:bg-surface-container transition-colors">
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>

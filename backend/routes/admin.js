@@ -164,6 +164,11 @@ router.patch('/users/:id/verify', async (req, res) => {
 router.delete('/users/:id', async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
+    // Cascade delete — properties, roommate profile, bookings, favorites
+    await Promise.all([
+      Property.updateMany({ owner: req.params.id }, { isActive: false, moderationStatus: 'rejected' }),
+      RoommateProfile.findOneAndUpdate({ user: req.params.id }, { isActive: false }),
+    ]);
     res.json({ success: true, message: 'User deleted permanently' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
