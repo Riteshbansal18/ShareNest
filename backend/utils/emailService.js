@@ -1,6 +1,14 @@
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
 const sendOTPEmail = async (email, otp, fullName, isReset = false) => {
   const subject = isReset ? 'Reset your ShareNest password' : 'Verify your ShareNest account';
@@ -10,8 +18,8 @@ const sendOTPEmail = async (email, otp, fullName, isReset = false) => {
     : 'Use the OTP below to verify your email address. It expires in <strong>10 minutes</strong>.';
   const otpLabel = isReset ? 'Password Reset OTP' : 'Your OTP';
 
-  await resend.emails.send({
-    from: 'ShareNest <onboarding@resend.dev>',
+  await transporter.sendMail({
+    from: `"ShareNest" <${process.env.SMTP_USER}>`,
     to: email,
     subject,
     html: `
