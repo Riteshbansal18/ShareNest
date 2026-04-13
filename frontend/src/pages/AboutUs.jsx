@@ -15,18 +15,6 @@ const TEAM = [
     linkedin: '#',
     github: '#',
     emoji: '👨‍💻'
-  },
-  {
-    name: 'Harman',
-    role: 'Co-Founder & UI/UX Designer',
-    location: 'Punjab, India',
-    university: 'Chitkara University',
-    bio: 'Harman is the creative force behind ShareNest\'s beautiful and intuitive design. With a sharp eye for detail and a deep understanding of user experience, she crafted every screen, color palette, and interaction to feel effortless. She believes great design isn\'t just about looks — it\'s about making people feel at home the moment they land on a page. Her work on ShareNest reflects her passion for building products that are both functional and delightful to use.',
-    skills: ['UI Design', 'UX Research', 'Figma', 'Prototyping', 'User Testing', 'Design Systems'],
-    avatar: 'https://ui-avatars.com/api/?name=Harman&background=7c3aed&color=fff&size=200&bold=true',
-    linkedin: '#',
-    github: '#',
-    emoji: '🎨'
   }
 ];
 
