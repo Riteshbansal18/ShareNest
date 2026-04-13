@@ -107,6 +107,12 @@ if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Disable buffering for WebSocket on Render
+app.use((req, res, next) => {
+  res.setHeader('X-Accel-Buffering', 'no');
+  next();
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
