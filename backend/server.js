@@ -21,8 +21,8 @@ const io = new Server(server, {
   }
 });
 
-// Make io accessible in routes
-app.set('io', io);
+// Trust proxy for Render/production
+app.set('trust proxy', 1);
 
 // Track online users: userId -> socketId
 const onlineUsers = new Map();

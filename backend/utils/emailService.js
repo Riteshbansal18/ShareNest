@@ -1,17 +1,6 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const sendOTPEmail = async (email, otp, fullName, isReset = false) => {
   const subject = isReset ? 'Reset your ShareNest password' : 'Verify your ShareNest account';
@@ -21,8 +10,8 @@ const sendOTPEmail = async (email, otp, fullName, isReset = false) => {
     : 'Use the OTP below to verify your email address. It expires in <strong>10 minutes</strong>.';
   const otpLabel = isReset ? 'Password Reset OTP' : 'Your OTP';
 
-  const mailOptions = {
-    from: `"ShareNest" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: 'ShareNest <onboarding@resend.dev>',
     to: email,
     subject,
     html: `
@@ -42,9 +31,7 @@ const sendOTPEmail = async (email, otp, fullName, isReset = false) => {
         </div>
       </div>
     `,
-  };
-
-  await transporter.sendMail(mailOptions);
+  });
 };
 
 module.exports = { sendOTPEmail };
