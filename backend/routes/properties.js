@@ -86,7 +86,8 @@ router.post('/', protect, upload.array('images', 10), compressAndSave('property'
       amenities, genderPref, lookingFor
     } = req.body;
 
-    const images = req.files ? req.files.map(f => `/uploads/images/${f.filename}`) : [];
+    const getImageUrl = (f) => f.path?.startsWith('http') ? f.path : `/uploads/images/${f.filename}`;
+    const images = req.files ? req.files.map(getImageUrl) : [];
 
     const property = await Property.create({
       owner: req.user._id,
@@ -119,7 +120,7 @@ router.put('/:id', protect, upload.array('images', 10), compressAndSave('propert
 
     const updates = { ...req.body };
     if (req.files && req.files.length > 0) {
-      updates.images = req.files.map(f => `/uploads/images/${f.filename}`);
+      updates.images = req.files.map(f => f.path?.startsWith('http') ? f.path : `/uploads/images/${f.filename}`);
     }
     if (updates.amenities && !Array.isArray(updates.amenities)) {
       updates.amenities = updates.amenities.split(',');

@@ -40,7 +40,7 @@ router.post('/upload-avatar', protect, upload.single('avatar'), compressAndSave(
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
-    const imageUrl = `/uploads/images/${req.file.filename}`;
+    const imageUrl = req.file.path?.startsWith('http') ? req.file.path : `/uploads/images/${req.file.filename}`;
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { profileImage: imageUrl },
