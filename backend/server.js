@@ -15,7 +15,7 @@ const server = http.createServer(app);
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'http://localhost:5174'],
+    origin: '*',
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -79,9 +79,20 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// CORS
+const allowedOrigins = [
+  process.env.CLIENT_URL || 'http://localhost:5173',
+  'http://localhost:5174',
+  'https://sharenest.vercel.app',
+];
+
 app.use(cors({
-  origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'http://localhost:5174'],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o.replace('*', '')))) {
+      callback(null, true);
+    } else {
+      callback(null, true); // allow all for now, restrict after deploy
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
