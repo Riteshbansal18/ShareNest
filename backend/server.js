@@ -83,6 +83,7 @@ const allowedOrigins = [
   process.env.CLIENT_URL || 'http://localhost:5173',
   'http://localhost:5174',
   'https://sharenest.vercel.app',
+  'https://share-nest-sigma.vercel.app',
 ];
 
 app.use(cors({
