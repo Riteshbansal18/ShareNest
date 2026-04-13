@@ -29,7 +29,15 @@ export default function Messages() {
     const socket = getSocket();
     socket.on('message:new', (msg) => {
       const convId = msg.conversation;
-      if (activeConvRef.current?._id === convId) setMessages(prev => [...prev, msg]);
+      if (activeConvRef.current?._id === convId) {
+        setMessages(prev => {
+          // Skip own messages — already added optimistically
+          if (msg.sender?._id === user?._id) {
+            return prev.map(m => (m.isTemp && m.content === msg.content) ? msg : m);
+          }
+          return [...prev, msg];
+        });
+      }
       setConversations(prev => prev.map(c =>
         c._id === convId
           ? { ...c, lastMessage: msg.content, lastMessageAt: msg.createdAt, unread: activeConvRef.current?._id === convId ? 0 : (c.unread || 0) + 1 }
@@ -74,9 +82,27 @@ export default function Messages() {
     const content = newMessage.trim();
     setNewMessage('');
     getSocket().emit('typing:stop', { conversationId: activeConv._id, userId: user._id });
-    try { await messagesAPI.sendMessage(activeConv._id, content); }
-    catch { toast.error('Failed to send message'); }
-    finally { setSending(false); }
+
+    // Optimistically add own message immediately — don't wait for socket
+    const tempMsg = {
+      _id: `temp-${Date.now()}`,
+      conversation: activeConv._id,
+      sender: { _id: user._id, fullName: user.fullName, profileImage: user.profileImage },
+      content,
+      createdAt: new Date().toISOString(),
+      isTemp: true,
+    };
+    setMessages(prev => [...prev, tempMsg]);
+
+    try {
+      const res = await messagesAPI.sendMessage(activeConv._id, content);
+      // Replace temp message with real one from server
+      setMessages(prev => prev.map(m => m._id === tempMsg._id ? res.data.message : m));
+    } catch {
+      // Remove temp message on failure
+      setMessages(prev => prev.filter(m => m._id !== tempMsg._id));
+      toast.error('Failed to send message');
+    } finally { setSending(false); }
   };
 
   const handleTyping = (e) => {
