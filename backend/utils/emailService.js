@@ -9,7 +9,7 @@ const sendOTPEmail = async (email, otp, fullName, isReset = false) => {
   const otpLabel = isReset ? 'Password Reset OTP' : 'Your OTP';
 
   const data = JSON.stringify({
-    sender: { name: 'ShareNest', email: 'sonu192089@gmail.com' },
+    sender: { name: 'ShareNest', email: process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER },
     to: [{ email }],
     subject,
     htmlContent: `
